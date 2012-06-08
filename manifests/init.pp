@@ -54,7 +54,7 @@ else #### catch-all (Dell) #################################
 ######### set a cron job to poll ipmi every two minutes
 	cron { "ipmi.sh_cron":
 		ensure  => present,
-		command => "nice -10 /etc/zabbix/ipmi.sh",
+		command => "if [ `ps aux | grep 'ipmi.sh' | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/ipmi.sh`; fi",
 		user    => "root",
 		minute  => "*/1",
 	     }
