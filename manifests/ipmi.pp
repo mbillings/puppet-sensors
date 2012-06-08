@@ -15,7 +15,7 @@ file { "/etc/zabbix/ipmi.sh":
 	owner	=> "root",
 	group	=> "root",
 	mode	=> "0750",
-	content => template("ipmi/ipmi.sh"),
+	content => template("sensors/ipmi.sh"),
 	require => Package[$rpms],
      } 
 

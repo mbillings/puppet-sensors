@@ -7,13 +7,14 @@ zserver=<%= scope.lookupvar('zabbix-agent::zabbix_server') %>
 zport=10051
 thisserver=<%= fqdn %>
 
-
+#### this takes too long ####
 # see if we are physical or virtual
-FACTER=`which facter`
-whatami=`$FACTER | grep -i virtual | grep -i physical | awk '{print $3}'`
-if [ "$whatami" != "physical" ]
-then exit 0
-fi
+#FACTER=`which facter`
+#whatami=`$FACTER | grep -i virtual | grep -i physical | awk '{print $3}'`
+#if [ "$whatami" != "physical" ]
+#then exit 0
+#fi
+#############################
 
 # check for ipmitool, otherwise we can't do anything
 IPMITOOL=`which ipmitool`
@@ -69,11 +70,11 @@ IPMISDR=( `$IPMITOOL sdr elist | tr '\n' ';'` )
 
 
 #### 3.x: Processor info: slots occupied/available, temp ###
-cpus=`echo "${IPMISDR[@]}" | tr ';' '\n' | grep "3\." | grep -i Presence | grep -iv detected | wc -l`
+cpus=`echo "${IPMISDR[@]}" | tr ';' '\n' | grep "3\." | grep -i Presence | wc -l`
 
 cpus=$(( $cpus - 1 )) # conventional cpu notation begins at zero
 
-for (( i=0; i<=$cpus; i++ )); do $zs -vv -z $zserver -p $zport -s $thisserver -k csg.sensors_ipmi_presence_cpu"$i" -o `echo "${IPMISDR[@]}" | tr ';' '\n' | grep "3\.$(( $i + 1 ))" | grep -i Presence | grep -iv  detected | awk -F \| '{print $5}' | awk '{print $1}' | sed -e 's/^[ \t]*//'` && $zs -vv -z $zserver -p $zport -s $thisserver -k csg.sensors_ipmi_temp_cpu"$i" -o `echo "${IPMISDR[@]}" | tr ';' '\n' | grep "3\.$(( $i + 1 ))" | grep Temp | awk -F \| '{print $5}' | awk '{print $1}' | sed s/-// | sed -e 's/^[ \t]*//'`; done
+for (( i=0; i<=$cpus; i++ )); do $zs -vv -z $zserver -p $zport -s $thisserver -k csg.sensors_ipmi_presence_cpu"$i" -o `echo "${IPMISDR[@]}" | tr ';' '\n' | grep "3\.$(( $i + 1 ))" | grep -i Presence | awk -F \| '{print $5}' | awk '{print $1}' | sed -e 's/^[ \t]*//'` && $zs -vv -z $zserver -p $zport -s $thisserver -k csg.sensors_ipmi_temp_cpu"$i" -o `echo "${IPMISDR[@]}" | tr ';' '\n' | grep "3\.$(( $i + 1 ))" | grep Temp | awk -F \| '{print $5}' | awk '{print $1}' | sed s/-// | sed -e 's/^[ \t]*//'`; done
 ############################################################
 
 
