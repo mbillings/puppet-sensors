@@ -6,7 +6,7 @@
 #
 class sensors
 {
-# Supermicro
+#### Supermicro ############################################
 if ( $manufacturer == "Supermicro" )
 { 
 	$rpms = ["lm_sensors"] 
@@ -21,7 +21,7 @@ if ( $manufacturer == "Supermicro" )
 		require => Package[$rpms],
 	     } 
 	
-	# set a cron job to poll the server's sensors every minute
+######### set a cron job to poll the server's sensors every minute
 	cron { "poll_sensors":
 		ensure  => present,
 		command => "nice -10 /etc/zabbix/lm_sensors.sh",
@@ -29,18 +29,19 @@ if ( $manufacturer == "Supermicro" )
 		minute  => "*/1",
 	     }  
 	
-	# Order of operations        
+######### Order of operations        
 	File["lm_sensors.sh"] -> Cron["poll_sensors"]	
 }
-else # catch-all (Dell)
+############################################################
+else #### catch-all (Dell) #################################
 {
-	# RHEL6 has ipmitool, whereas RHEL5 has OpenIPMI-tools. They are the same binary <__<
+######### RHEL6 has ipmitool, whereas RHEL5 has OpenIPMI-tools. They are the same binary <__<
 	if ($operatingsystemrelease >= 6)       { $rpms = ["ipmitool"] }
 	else                                    { $rpms = ["OpenIPMI-tools"] }
 
 	package { $rpms: ensure => installed, }
 
-	# loads ipmi kernel modules, runs tool, and sends to zabbix
+######### loads ipmi kernel modules, runs tool, and sends to zabbix
 	file { "/etc/zabbix/ipmi.sh":
 		path    => "/etc/zabbix/ipmi.sh",
 		owner   => "root",
@@ -50,7 +51,7 @@ else # catch-all (Dell)
 		require	=> Package[$rpms],
 	     }	 
 
-	# set a cron job to poll ipmi every two minutes
+######### set a cron job to poll ipmi every two minutes
 	cron { "ipmi.sh_cron":
 		ensure  => present,
 		command => "nice -10 /etc/zabbix/ipmi.sh",
@@ -58,25 +59,32 @@ else # catch-all (Dell)
 		minute  => "*/1",
 	     }
 	
-	# ensure the ipmi daemon running for all runlevels
+######### ensure the ipmi daemon running for all runlevels
 	exec { "chkconfig_ipmievd_on":
 		command => "chkconfig --level 12345 ipmievd on",
 		path    => "/sbin/:/usr/sbin/:/bin/:/usr/bin/",
 		onlyif  => 'test `chkconfig --list | grep -i ipmi | grep \:on | wc -l` -eq 0'
 	     }
 
-	# set root user pass, null user pass, and community string
+######### hacked-together time check
+	exec { "set_ipmi_time":
+		command => 'ipmitool sel time set "`date +%m\/%d\/%Y\ %H:%M:%S`"',
+		path    => "/sbin/:/usr/sbin/:/bin/:/usr/bin/",
+		onlyif  => 'test `/etc/init.d/ipmievd status 2>/dev/null | grep -i running | wc -l` -eq 1 && ipmitime=$( ipmitool sel time get | sed s/\\///g | sed s/\://g | sed s/\ //g ) && datetime=$( /bin/date +%m%d%Y%H%M%S ) && test `if [ "${ipmitime}" -ne "${datetime}" ]; then echo 1; fi` -eq 1'
+	     }
+
+######### set root user pass, null user pass, and community string
 	exec { "set_pass_and_community_string":
 		command => "ipmitool lan set 1 password 1T1ger1mu.1 && ipmitool user set password 2 alphadog && ipmitool lan set 1 snmp CSGLINUX",
 		path    => "/sbin/:/usr/sbin/:/bin/:/usr/bin/",
 		onlyif  => 'test `/etc/init.d/ipmievd status 2>/dev/null | grep -i running | wc -l` -eq 1 && test `ipmitool lan print | grep CSGLINUX | wc -l` -eq 0'
 	     }
 
-	# Order of operations   
-	File["/etc/zabbix/ipmi.sh"] -> Cron["ipmi.sh_cron"] -> Exec["chkconfig_ipmievd_on"] -> Exec["set_pass_and_community_string"]
+######### Order of operations   
+	File["/etc/zabbix/ipmi.sh"] -> Cron["ipmi.sh_cron"] -> Exec["chkconfig_ipmievd_on"] -> Exec["set_ipmi_time"] -> Exec["set_pass_and_community_string"]
 	
-	# here be future sol configuration
-	
-	#
+######### here be future sol configuration
+		
 }
+############################################################
 }
