@@ -12,12 +12,12 @@ if ( $manufacturer == "Supermicro" )
 	$rpms = ["lm_sensors"] 
 
 	package { $rpms: ensure => installed, }
-	file { "sensors.sh":
+	file { "lm_sensors.sh":
 		path    => "/etc/zabbix/lm_sensors.sh",    
 		owner   => "root",
 		group   => "root",
 		mode    => "0750", 
-		content => template("bmc/lm_sensors.sh"),
+		content => template("sensors/lm_sensors.sh"),
 		require => Package[$rpms],
 	     } 
 	
