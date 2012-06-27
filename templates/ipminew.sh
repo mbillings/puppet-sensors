@@ -6,7 +6,10 @@
 # In addition, the Zabbix IPMI interface requires a template to work. 
 # Thus, until a grand unified template is created or a newer IPMItools returns unique and consistent IDs,
 # we are stuck doing this manually as a per-host operation.
+#
+# If you need to run this script again to look for new keys, change "havewerunyet" to 0
 
+havewerunyet=0 	# 0 = no, 1 = yes. Change to 0 if you ever need to run this script again
 zs=<%= scope.lookupvar('zabbix-agent::which_zsender') %>
 zserver=<%= scope.lookupvar('zabbix-agent::zabbix_server') %>
 zport=10051
@@ -15,7 +18,6 @@ key="csg.sensors_ipmi_"
 key_last_sel="csg.sensors_ipmi_last_sel"
 zapi="https://zabbix.missouri.edu/zabbix/api_jsonrpc.php"
 zauth="91240fb8d61542580a3d2e7b00920b3c"
-havewerunyet="no"
 ipmistatus=$key"daemon_status"
 
 # ensure the daemon is running
@@ -60,7 +62,7 @@ $zs -vv -z $zserver -p $zport -s $thisserver -k $ipmistatus -o Active
 
 
 #### zabbix api ####
-if [ "$havewerunyet"=="no" ]
+if [ "$havewerunyet" -eq 0 ]
 then
 	# get host id
 	hostdata=\{\"jsonrpc\":\"2.0\",\"method\":\"host.get\",\"params\":\{\"output\":\"extend\",\"filter\":\{\"host\":\[\"$thisserver\",\"$thisserver\"\]\}\},\"auth\":\"$zauth\",\"id\":\"2\"\}
@@ -71,17 +73,22 @@ then
 	appdata=\{\"jsonrpc\":\"2.0\",\"method\":\"application.create\",\"params\":\[\{\"name\":\"Sensors\",\"hostid\":\"$hostid\"\}\],\"auth\":\"$zauth\",\"id\":2\}
 	appid=$( curl -i -X POST -H 'Content-Type:application/json' -d $appdata $zapi | tr ',' '\n' | grep -i applicationid | tr '\"' '\n' | grep [0-9] | sed s/\"//g )
 
+	# get the app id (yes, we just got it in the previous command, this is in case you ever
+	#  need to re-initialize a server's items)
+	# re-creating items if they already exist is moot; it will error out, end of story, no loss on our side
+	getappdata=\{\"jsonrpc\":\"2.0\",\"method\":\"application.get\",\"params\":\{\"search\":\{\"name\":\"Sensors\"\},\"hostid\":\"10486\",\"output\":\"extend\",\"expandData\":1,\"limit\":1\},\"auth\":\"91240fb8d61542580a3d2e7b00920b3c\",\"id\":2\} 
+	getappid=$( curl -i -X POST -H 'Content-Type:application/json' -d $getappdata $zapi | tr ',' '\n' | grep applicationid | awk -F\" '{print $4}' )
 
 	# create csg.sensors_ipmi_daemon_status item 
-	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$ipmistatus\",\"key_\":\"$ipmistatus\",\"type\":\"7\",\"value_type\":\"4\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$ipmistatus\",\"key_\":\"$ipmistatus\",\"type\":\"7\",\"value_type\":\"4\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$getappid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
 	curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 
 	# create ipmi security event log key
-	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$key_last_sel\",\"key_\":\"$key_last_sel\",\"type\":\"7\",\"value_type\":\"4\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$key_last_sel\",\"key_\":\"$key_last_sel\",\"type\":\"7\",\"value_type\":\"4\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$getappid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
         curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 
 	# send the last line of the log to zabbix
-	$zs -vv -z $zserver -p $zport -s $thisserver -k $key_last_sel -o `/usr/bin/ipmitool sel list | tail -1 | sed 's/[ \t]*//' | sed s/\|//g | sed s/\ /_/g | sed s/\\//_/g | sed s/\:/_/g | sed s/\#//g`
+	$zs -vv -z $zserver -p $zport -s $thisserver -k $key_last_sel -o "`/usr/bin/ipmitool sel list | tail -1 | sed 's/[ \t]*//' | sed s/\|//g | sed s/\ /_/g | sed s/\\//_/g | sed s/\:/_/g | sed s/\#//g`"
 
 fi	
 #### /zabbix api ####
@@ -129,18 +136,23 @@ do
 		# determine what unit value zabbix should use for this key
 		if [ $( echo $IPMIval | awk -F \| '{print $5}' | awk '{print $1}' | sed s/\-// | grep ^[0-9] | wc -l ) -eq 1 ]
 		then 	# numeric (float)
+			unit=$( echo $IPMIval | awk -F \| '{print $5}' | cut -d' ' -f2 --complement | sed 's/^[ \t]*//' | sed s/\ /_/g | sed 's/[ \t]*//' )
 			valuetype=0
 			keyval=$( echo $IPMIval | awk -F \| '{print $5}' | awk '{print $1}' | sed s/\-// )
 		else 	# text
 			valuetype=4
-			keyval=$( echo $IPMIval | awk -F \| '{print $5}' | sed 's/[ \t]*$//g' | sed 's/^[ \t]*//' | sed s/\ /_/g )
+			keyval=$( echo $IPMIval | awk -F \| '{print $5}' | sed 's/[ \t]*$//g' | sed 's/^[ \t]*//' | sed s/\ /_/g ) 
 		fi
 
 		#### zabbix api ####
-		if [ "$havewerunyet"=="no" ]
+		if [ "$havewerunyet" -eq 0 ]
 		then
-			itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"7\",\"value_type\":\"$valuetype\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
-
+			if [ $valuetype -eq 0 ]
+			then 
+				itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"7\",\"value_type\":\"$valuetype\",\"units\":\"$units\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$getappid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+			else 
+				itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"7\",\"value_type\":\"$valuetype\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$getappid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+			fi
 			createitem=$( curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi )
 			
 			curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
@@ -149,10 +161,12 @@ do
 		
 
 		# send the item's value to zabbix
-		echo $zs -vv -z $zserver -p $zport -s $thisserver -k $keyname -o $keyval 
-		#echo $zs -vv -z $zserver -p $zport -s $thisserver -k $keyname -o $( if [ $( echo $IPMIval | awk -F \| '{print $5}' | awk '{print $1}' | grep ^[0-9] | wc -l ) -eq 1 ]; then echo $IPMIval | awk -F \| '{print $5}' | awk '{print $1}' ; else echo $IPMIval | awk -F \| '{print $5}' | sed 's/[ \t]*$//g' | sed 's/^[ \t]*//' | sed s/\ /_/g ; fi ) 
+		$zs -vv -z $zserver -p $zport -s $thisserver -k $keyname -o "$keyval"
         done 
 done 
 
-# inform foreman that ipmi initialization is complete so we don't recreate keys or check for their existence
-touch /etc/zabbix/ipmi_initialization_complete
+# don't recreate keys (they were just made). Don't check for their existence, either; it takes too long
+if [ "$havewerunyet" -eq 0 ]
+then
+	sed -i s/havewerunyet\=0/havewerunyet\=1/g /etc/zabbix/ipmi.sh
+fi

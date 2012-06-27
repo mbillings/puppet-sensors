@@ -1,5 +1,4 @@
-#
-# Sensors: Probe physical hardware for temperature, voltage, wattage, amperage, presence, etc.
+# Sensors: Probe physical hardware for temperature, voltage, wattage, amperage, hw presence/capability, etc.
 #
 # Originally two manifests (ipmi and lm_sensors), it seemed easier to group them together for one-click execution
 # Apply this to any host, physical or virtual, and it should JustWork(tm) or at least Z!send an error message
@@ -7,20 +6,13 @@
 class sensors::new
 {
 
-	# cron to poll sensors
-	cron { "sensors_cron":
-		ensure  => present,
-		command => "if [ `ps aux | egrep 'lm_sensors.sh|ipmi.sh' | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/sensors`; fi",
-		user    => "root",
-		minute  => "*/1",
-	     }
 
 #### Supermicro ####
 if ( $manufacturer == "Supermicro" )
 { 
 	$rpms = ["lm_sensors"] 
-
 	package { $rpms: ensure => installed, }
+	
 	file { "lm_sensors.sh":
 		path    => "/etc/zabbix/lm_sensors.sh",    
 		owner   => "root",
@@ -31,29 +23,16 @@ if ( $manufacturer == "Supermicro" )
 	     } 
 
 
-
-	# create symlink on first run
-	exec { "create sensors symlink to lm_sensors on first run":
-		command => "ln -s /etc/zabbix/lm_sensors.sh /etc/zabbix/sensors",
-		path 	=> "/bin/:/sbin/:/usr/bin/:/usr/sbin/",
-		onlyif	=> 'if [ ! -L /etc/zabbix/sensors ]',
-	     }
-
-
-	# cron to poll sensors 
-	cron { "poll_sensors":
+	# cron to poll lm sensors
+	cron { "lm_sensors_cron":
 		ensure  => present,
-		command => "nice -10 /etc/zabbix/lm_sensors.sh",
+		command => "if [ `ps aux | grep sensors | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/lm_sensors`; fi",
 		user    => "root",
-		minute  => "*/1",
-	     }  
-	
-	
-	# Order of operations        
-	File["lm_sensors.sh"] -> Cron["poll_sensors"]	
+		minute  => "*/2",
+	     }
 }
 #### /Supermicro ####
-else #### catch-all (Dell) ####
+else #### Dell (catch-all) ####
 {
 	# RHEL6=ipmitool, RHEL5=OpenIPMI-tools
 	if ($operatingsystemrelease >= 6)       { $rpms = ["ipmitool"] }
@@ -63,42 +42,28 @@ else #### catch-all (Dell) ####
 
 
 	# loads ipmi kernel modules, runs tool, and sends to zabbix
-	file { "/etc/zabbix/ipmi_init.sh":
-		path    => "/etc/zabbix/ipmi_init.sh",
+	file { "/etc/zabbix/ipmi.sh":
+		replace => "no",
+		ensure	=> "present",
+		path    => "/etc/zabbix/ipmi.sh",
 		owner   => "root",
 		group   => "root",
 		mode    => "0750",
-		content	=> template("sensors/ipmi.sh"),
+		content	=> template("sensors/ipminew.sh"),
 		require	=> Package[$rpms],
 	     }	 
 
-	
-	# cron to poll ipmi
-	cron { "ipmi.sh_cron":
+
+	# cron to poll ipmi sensors
+	cron { "ipmi_sensors_cron":
 		ensure  => present,
 		command => "if [ `ps aux | grep 'ipmi.sh' | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/ipmi.sh`; fi",
 		user    => "root",
-		minute  => "*/1",
-	     }
-		
-
-	# create symlink on first run
-	exec { "link sensors to ipmi for the first run":
-		command => "ln -s /etc/zabbix/ipmi_init.sh /etc/zabbix/sensors",
-		path 	=> "/bin/:/sbin/:/usr/bin/:/usr/sbin/",
-		onlyif	=> 'test `ls -l /etc/zabbix/sensors | grep lrwxrwxrwx | wc -l` -eq 0 && test `ls /etc/zabbix/ipmi.sh | wc -l` -eq 0',
+		minute  => "*/2",
 	     }
 
 
-	# after first run: copy the ipmi file, sed replace $havewerunyet from no to yes in the new script, remove the current symlink, and relink to the new script
-	exec { "move sensors symlink to ipmi.sh and reformat to not recheck items":
-		command => "cp /etc/zabbix/ipmi_init.sh /etc/zabbix/ipmi.sh && sed -i s/havewerunyet\=\"no\"/havewerunyet\=\"yes\"/ && rm -f /etc/zabbix/sensors && ln -s /etc/zabbix/ipmi.sh /etc/zabbix/sensors",
-		path 	=> "/bin/:/sbin/:/usr/bin/:/usr/sbin/",
-		onlyif	=> 'test `ls /etc/zabbix/ipmi.sh | wc -l` -eq 0 && test `ls /etc/zabbix/ipmi_initialization_complete | wc -l` -eq 1',
-	     }
-
-
-	# hacked-together time check
+	# hacked-together time set
 	exec { "set_ipmi_time":
 		command => 'ipmitool sel time set "`date +%m\/%d\/%Y\ %H:%M:%S`"',
 		path    => "/sbin/:/usr/sbin/:/bin/:/usr/bin/",
