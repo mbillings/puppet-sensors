@@ -21,8 +21,9 @@ zapi="https://zabbix.missouri.edu/zabbix/api_jsonrpc.php"
 zauth="91240fb8d61542580a3d2e7b00920b3c"
 
 # ensure the daemon is running
-running=`/etc/init.d/ipmievd status 2>/dev/null | grep -i running | wc -l`
-if [ $running -eq 0 ]
+#running=`/etc/init.d/ipmi status 2>/dev/null | grep -i running | wc -l`
+/etc/init.d/ipmi* status 2>/dev/null
+if [ $? -ne 0 ]
 then
         ipmiresult=`/etc/init.d/ipmievd start 2>/dev/null`
         if [ $? -ne 0 ]
@@ -47,10 +48,10 @@ then
                   fi
                 done
 
-                nowrunning=`/etc/init.d/ipmievd start 2>/dev/null | grep -i running | wc -l`
-                if [ $nowrunning -eq 0 ]
-                then { # if the daemon cannot be started, alert zabbix
-                        $zs -vv -z $zserver -p $zport -s $thisserver -k $ipmistatus -o Stopped
+                /etc/init.d/ipmi* start
+                if [ $? -ne 0 ]
+                then { 	# if the daemon cannot be started, alert zabbix
+                        $zs -vv -z $zserver -p $zport -s $thisserver -k $ipmistatus -o Stopped 1>/dev/null 2>/dev/null
                         exit 0
                      }
                 fi
@@ -88,7 +89,7 @@ hostid=$( curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi 
 
 
 ## get sensors app id ##
-getappid=\{\"jsonrpc\":\"2.0\",\"method\":\"application.get\",\"params\":\{\"search\":\{\"name\":\"Sensors\"\},\"hostid\":\"$hostid\",\"output\":\"extend\",\"expandData\":1,\"limit\":1\},\"auth\":\"$zauth\",\"id\":2\}
+getappid=\{\"jsonrpc\":\"2.0\",\"method\":\"application.get\",\"params\":\{\"search\":\{\"name\":\"Sensors\"\},\"hostids\":\"$hostid\",\"output\":\"extend\",\"expandData\":1,\"limit\":1\},\"auth\":\"$zauth\",\"id\":2\}
 
 # curl get sensors app id to zabbix
 echo curl -i -X POST -H 'Content-Type:application/json' -d $getappid $zapi >> $ipmilog
@@ -120,10 +121,10 @@ fi
 
 
 # inform zabbix that the ipmi daemon is active
-$zs -vv -z $zserver -p $zport -s $thisserver -k $ipmistatus -o Active
+$zs -vv -z $zserver -p $zport -s $thisserver -k $ipmistatus -o Active 1>/dev/null 2>/dev/null
 	
 # send the last line of the security event log log to zabbix
-$zs -vv -z $zserver -p $zport -s $thisserver -k $key_last_sel -o "$( /usr/bin/ipmitool sel list | tail -1 | sed 's/^[ \t]*//' | sed 's/[ \t]*$//g' | sed s/\|//g | sed s/\ /_/g | sed s/\\//_/g | sed s/\:/_/g | sed s/\#//g )"
+$zs -vv -z $zserver -p $zport -s $thisserver -k $key_last_sel -o "$( /usr/bin/ipmitool sel list | tail -1 | sed 's/^[ \t]*//' | sed 's/[ \t]*$//g' | sed s/\|//g | sed s/\ /_/g | sed s/\\//_/g | sed s/\:/_/g | sed s/\#//g )" 1>/dev/null 2>/dev/null
 
 
 
@@ -194,7 +195,7 @@ do
 		
 
 		# send the item's value to zabbix
-		$zs -vv -z $zserver -p $zport -s $thisserver -k $keyname -o "$keyval"
+		$zs -vv -z $zserver -p $zport -s $thisserver -k $keyname -o "$keyval" 1>/dev/null 2>/dev/null
         done 
 done 
 
