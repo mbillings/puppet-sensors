@@ -24,7 +24,7 @@ if ( $manufacturer == "Supermicro" )
 	# cron to poll lm sensors
 	cron { "lm_sensors_cron":
 		ensure  => present,
-		command => "if [ `ps aux | grep sensors | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/lm_sensors`; fi",
+		command => "if [ `ps aux | grep sensors | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/lm_sensors 1>/dev/null 2>/dev/null`; fi 1>/dev/null 2>/dev/null",
 		user    => "root",
 		minute  => "*/2",
 	     }
@@ -55,7 +55,7 @@ else #### Dell (catch-all) ####
 	# cron to poll ipmi sensors
 	cron { "ipmi_sensors_cron":
 		ensure  => present,
-		command => "if [ `ps aux | grep 'ipmi.sh' | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/ipmi.sh`; fi",
+		command => "if [ `ps aux | grep 'ipmi.sh' | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/ipmi.sh 1>/dev/null 2>/dev/null`; fi 1>/dev/null 2>/dev/null",
 		user    => "root",
 		minute  => "*/2",
 	     }
