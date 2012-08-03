@@ -2,16 +2,15 @@
 #
 # Initialize ipmi and create Zabbix items for the host
 # As of 26 June 2012, IPMI identifiers are not only non-unique, but also not consistent across platforms.
-# Therefore, a template or templates to rule them all isn't/aren't exactly feasible.
+# Therefore, a template or templates to rule them all is not feasible.
 # In addition, the Zabbix IPMI interface requires a template to work. 
 # Thus, until a grand unified template is created or a newer IPMItools returns unique and consistent IDs,
-# we are stuck doing this as a pseudo-customized operation.
-# However, this is only pseudo-custom since this script names items based on what IPMI returns
+# we are forced to create Zabbix items based on what IPMI returns
 
 key="csg.sensors_ipmi_"
 key_last_sel=$key"last_sel"
 ipmistatus=$key"daemon_status"
-ipmilog="/etc/zabbix/ipmilog"
+#ipmilog="/etc/zabbix/ipmilog"
 
 zs=<%= scope.lookupvar('zabbix-agent::which_zsender') %>
 zserver=<%= scope.lookupvar('zabbix-agent::zabbix_server') %>
@@ -76,14 +75,14 @@ fi
 #   "id":"2"
 # }
 
-echo ============================================================== >> $ipmilog
+#echo ============================================================== >> $ipmilog
 
 	
 ## get host id ##
 hostdata=\{\"jsonrpc\":\"2.0\",\"method\":\"host.get\",\"params\":\{\"output\":\"extend\",\"filter\":\{\"host\":\[\"$thisserver\"\]\}\},\"auth\":\"$zauth\",\"id\":\"2\"\}
 
 # curl get host id to zabbix
-echo curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi >> $ipmilog
+#echo curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi >> $ipmilog
 hostid=$( curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi | tr ',' '\n' | grep \"hostid | tr '\"' '\n' | grep [0-9] )
 ####
 
@@ -92,7 +91,7 @@ hostid=$( curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi 
 getappid=\{\"jsonrpc\":\"2.0\",\"method\":\"application.get\",\"params\":\{\"search\":\{\"name\":\"Sensors\"\},\"hostids\":\"$hostid\",\"output\":\"extend\",\"expandData\":1,\"limit\":1\},\"auth\":\"$zauth\",\"id\":2\}
 
 # curl get sensors app id to zabbix
-echo curl -i -X POST -H 'Content-Type:application/json' -d $getappid $zapi >> $ipmilog
+#echo curl -i -X POST -H 'Content-Type:application/json' -d $getappid $zapi #>> $ipmilog
 appid_exists=$( curl -i -X POST -H 'Content-Type:application/json' -d $getappid $zapi | grep $thisserver | tr ',' '\n' | grep \"applicationid | tr '\"' '\n' | grep [0-9] )
 ####
 
@@ -102,18 +101,18 @@ if [ -z $appid_exists ]
 then
 	# create Sensors application for host's classification
 	appdata=\{\"jsonrpc\":\"2.0\",\"method\":\"application.create\",\"params\":\[\{\"name\":\"Sensors\",\"hostid\":\"$hostid\"\}\],\"auth\":\"$zauth\",\"id\":2\}
-	echo curl -i -X POST -H 'Content-Type:application/json' -d $appdata $zapi >> $ipmilog
+#	echo curl -i -X POST -H 'Content-Type:application/json' -d $appdata $zapi >> $ipmilog
 	appid=$( curl -i -X POST -H 'Content-Type:application/json' -d $appdata $zapi | tr ',' '\n' | grep \"applicationid | tr '\"' '\n' | grep [0-9] )
 	
 	# create csg.sensors_ipmi_daemon_status item 
 	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$ipmistatus\",\"key_\":\"$ipmistatus\",\"type\":\"7\",\"value_type\":\"4\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
-	echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $ipmilog
+#	echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $ipmilog
 	curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 
 	
 	# create ipmi security event log key
 	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$key_last_sel\",\"key_\":\"$key_last_sel\",\"type\":\"7\",\"value_type\":\"4\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
-        echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $ipmilog
+#        echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $ipmilog
         curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 fi	
 
@@ -188,7 +187,7 @@ do
 			else 
 				itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"7\",\"value_type\":\"$valuetype\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
 			fi
-			echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $ipmilog
+#			echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $ipmilog
 			curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 		fi
 		#### /create items ####
