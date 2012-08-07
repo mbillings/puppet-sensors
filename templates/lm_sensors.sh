@@ -57,7 +57,7 @@ SENSORS=( `$SENSORS 2>/dev/null | grep "(" | grep -iv ALARM | tr '\n' ';'` )
 ## Get the host id for this host ##
 hostdata=\{\"jsonrpc\":\"2.0\",\"method\":\"host.get\",\"params\":\{\"output\":\"extend\",\"filter\":\{\"host\":\[\"$thisserver\"\]\}\},\"auth\":\"$zauth\",\"id\":\"2\"\}
 
-echo curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi >> $sensorslog
+#echo curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi >> $sensorslog
 hostid=$( curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi | tr ',' '\n' | grep \"hostid | tr '\"' '\n' | grep [0-9] )
 ##
 
@@ -68,7 +68,7 @@ getappid=\{\"jsonrpc\":\"2.0\",\"method\":\"application.get\",\"params\":\{\"sea
 
 
 ## Get the zabbix application id for this host ##
-echo curl -i -X POST -H 'Content-Type:application/json' -d $getappid $zapi >> $sensorslog
+#echo curl -i -X POST -H 'Content-Type:application/json' -d $getappid $zapi >> $sensorslog
 appid_exists=$( curl -i -X POST -H 'Content-Type:application/json' -d $getappid $zapi | grep $thisserver | tr ',' '\n' | grep \"applicationid | tr '\"' '\n' | grep [0-9] )
 ##
 
@@ -83,12 +83,12 @@ if [ -z $appid_exists ]
 then
         # create sensors application for host's classification
         appdata=\{\"jsonrpc\":\"2.0\",\"method\":\"application.create\",\"params\":\[\{\"name\":\"Sensors\",\"hostid\":\"$hostid\"\}\],\"auth\":\"$zauth\",\"id\":2\}
-        echo curl -i -X POST -H 'Content-Type:application/json' -d $appdata $zapi >> $sensorslog
+        #echo curl -i -X POST -H 'Content-Type:application/json' -d $appdata $zapi >> $sensorslog
         appid=$( curl -i -X POST -H 'Content-Type:application/json' -d $appdata $zapi | tr ',' '\n' | grep \"applicationid | tr '\"' '\n' | grep [0-9] )
 
         # create csg.sensors_ipmi_daemon_status item 
         itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"csg.sensors_lm_status\",\"key_\":\"csg.sensors_lm_status\",\"type\":\"7\",\"value_type\":\"4\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
-        echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $sensorslog
+        #echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $sensorslog
         curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 
 
