@@ -34,7 +34,7 @@ then	echo "Running initial config" >> $sensorslog
 
 	if [ "$module_list" -eq 0 ]
 	then
-		$zs -vv -z $zserver -p $zport -s $thisserver -k csg.sensors_lm_status -o NoKernelModulesAvailable 1>/dev/null 2>/dev/null
+		$zs -vv -z $zserver -p $zport -s $thisserver -k $key"status" -o NoKernelModulesAvailable 1>/dev/null 2>/dev/null
 		exit 0
 	else	for i in `grep -i MODULE_ /etc/sysconfig/lm_sensors | grep -v "#" | awk -F'=' '{print $2}'`; do $MODPROBE $i; done
 	fi
@@ -42,7 +42,7 @@ fi
 ##
 
 
-## Gather sensors information in one variable. Why not an array? Because, surprisingly, at this time of writing (6 August 2012), this is faster :p Less memory lookups, I guess? ##
+## Gather sensors information in one variable. Why not an array? Surprisingly, at this time of writing (6 August 2012), arrays are slower. Less memory lookups when you only have one variable, I guess? ##
 SENSORS=( `$SENSORS 2>/dev/null | grep "(" | grep -iv ALARM | tr '\n' ';'` )
 ##
 
@@ -52,9 +52,6 @@ SENSORS=( `$SENSORS 2>/dev/null | grep "(" | grep -iv ALARM | tr '\n' ';'` )
 #fi
 #
 
-## Inform zabbix that the daemon is active ##
-$zs -vv -z $zserver -p $zport -s $thisserver -k $key"lm_status" -o Active 2>/dev/null
-##
 
 
 ## Get the host id for this host ##
@@ -77,7 +74,7 @@ appid_exists=$( curl -i -X POST -H 'Content-Type:application/json' -d $getappid 
 
 
 ## number of data items ##
-totalitems=$( echo "${SENSORS[@]}" | tr ';' '\n' | wc -l )
+totalitems=$( echo "${SENSORS[@]}" | tr ';' '\n' | grep -v "^$" | wc -l )
 ##
 
 
@@ -100,6 +97,15 @@ then
 
 fi
 ##
+
+
+
+
+## Inform zabbix that the daemon is active ##
+$zs -vv -z $zserver -p $zport -s $thisserver -k $key"status" -o Active 2>/dev/null
+##
+
+
 
 
 ## send gathered sensor data to zabbix ##
