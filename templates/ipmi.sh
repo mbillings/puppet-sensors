@@ -21,10 +21,11 @@ key_last_sel=$key"last_sel"
 ipmistatus=$key"daemon_status"
 LSMOD="/sbin/lsmod"
 
-zs=<%= scope.lookupvar('zabbix-agent::which_zsender') %>
-zserver=<%= scope.lookupvar('zabbix-agent::zabbix_server') %>
+zs=/usr/bin/zabbix_sender
+
+zserver=128.206.15.46
 zport=10051
-thisserver=<%= fqdn %>
+thisserver=csgsandbox.doit.missouri.edu
 zapi="https://zabbix.missouri.edu/zabbix/api_jsonrpc.php"
 zauth="91240fb8d61542580a3d2e7b00920b3c"
 #############################
@@ -108,15 +109,15 @@ then
 	appid=$( curl -i -X POST -H 'Content-Type:application/json' -d $appdata $zapi | tr ',' '\n' | grep \"applicationid | tr '\"' '\n' | grep [0-9] )
 	
 	# create csg.sensors_ipmi_daemon_status item 
-	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$ipmistatus\",\"key_\":\"$ipmistatus\",\"type\":\"7\",\"value_type\":\"4\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$ipmistatus\",\"key_\":\"$ipmistatus\",\"type\":\"7\",\"value_type\":\"4\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
 #	echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $ipmilog
 	curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 
 	
 	# create ipmi security event log key
-	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$key_last_sel\",\"key_\":\"$key_last_sel\",\"type\":\"7\",\"value_type\":\"4\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$key_last_sel\",\"key_\":\"$key_last_sel\",\"type\":\"7\",\"value_type\":\"4\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
 #        echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $ipmilog
-        curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
+    curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 fi	
 ###################################################################
 
@@ -199,9 +200,9 @@ do
 		then
 			if [ $valuetype -eq 0 ]
 			then 
-				itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"7\",\"value_type\":\"$valuetype\",\"units\":\"$units\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+				itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"7\",\"value_type\":\"$valuetype\",\"units\":\"$units\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
 			else 
-				itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"7\",\"value_type\":\"$valuetype\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+				itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"7\",\"value_type\":\"$valuetype\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
 			fi
 #			echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $ipmilog
 			curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
