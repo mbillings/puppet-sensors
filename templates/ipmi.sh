@@ -35,8 +35,6 @@ zauth="91240fb8d61542580a3d2e7b00920b3c"
 ## Check if ipmi modules are loaded. If none detected, try to load necessary modules ##
 #######################################################################################
 modules=`$LSMOD | grep -i ^ipmi | wc -l`
-echo "first number of modules found: "$modules >> /etc/zabbix/ipmitrouble
-echo "lsmod command: "$LSMOD >> /etc/zabbix/ipmitrouble
 if [ "$modules" -eq 0 ] 
 then
 	/sbin/modprobe ipmi_devintf
