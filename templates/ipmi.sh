@@ -25,7 +25,7 @@ zs=/usr/bin/zabbix_sender
 
 zserver=128.206.15.46
 zport=10051
-thisserver=csgsandbox.doit.missouri.edu
+thisserver=<%= fqdn %>
 zapi="https://zabbix.missouri.edu/zabbix/api_jsonrpc.php"
 zauth="91240fb8d61542580a3d2e7b00920b3c"
 #############################
