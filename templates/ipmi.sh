@@ -1,16 +1,25 @@
 #!/bin/bash
 #
-# Initialize ipmi and create Zabbix items for the host
-# As of 26 June 2012, IPMI identifiers are not only non-unique, but also not consistent across platforms.
-# Therefore, a template or templates to rule them all is not feasible.
-# In addition, the Zabbix IPMI interface requires a template to work. 
-# Thus, until a grand unified template is created or a newer IPMItools returns unique and consistent IDs,
-# we are forced to create Zabbix items based on what IPMI returns
+# Purpose: Initialize ipmi and create Zabbix items for the host
+#
+# Comments: As of 26 June 2012, IPMI identifiers are not only non-unique, but also not consistent across platforms.
+# 	    Therefore, a template or templates to rule them all is not feasible.
+# 	    In addition, the Zabbix IPMI interface requires a template to work. 
+# 	    Thus, until a grand unified template is created or a newer IPMItools returns unique and consistent IDs,
+# 	    we are forced to create Zabbix items based on what IPMI returns.
+#
+# 	    Due to curl formatting, quotation marks must be delimited so that the delimits will be read at
+#	    execution time and interpreted as quotes. 
+#	    See http://www.zabbix.com/documentation/1.8/api or the "zabbix_curl_api" in the csglinux 
+#	    git repo for Zabbix curl formatting.
 
+#############################
+## User-editable variables ##
+#############################
 key="csg.sensors_ipmi_"
 key_last_sel=$key"last_sel"
 ipmistatus=$key"daemon_status"
-#ipmilog="/etc/zabbix/ipmilog"
+LSMOD="/sbin/lsmod"
 
 zs=<%= scope.lookupvar('zabbix-agent::which_zsender') %>
 zserver=<%= scope.lookupvar('zabbix-agent::zabbix_server') %>
@@ -18,85 +27,79 @@ zport=10051
 thisserver=<%= fqdn %>
 zapi="https://zabbix.missouri.edu/zabbix/api_jsonrpc.php"
 zauth="91240fb8d61542580a3d2e7b00920b3c"
+#############################
 
-# ensure the daemon is running
-#running=`/etc/init.d/ipmi status 2>/dev/null | grep -i running | wc -l`
-/etc/init.d/ipmi* status 2>/dev/null
-if [ $? -ne 0 ]
+
+#######################################################################################
+## Check if ipmi modules are loaded. If none detected, try to load necessary modules ##
+#######################################################################################
+modules=`$LSMOD | grep -i ^ipmi | wc -l`
+echo "first number of modules found: "$modules >> /etc/zabbix/ipmitrouble
+echo "lsmod command: "$LSMOD >> /etc/zabbix/ipmitrouble
+if [ "$modules" -eq 0 ] 
 then
-        ipmiresult=`/etc/init.d/ipmievd start 2>/dev/null`
-        if [ $? -ne 0 ]
-        then
-                /sbin/modprobe ipmi_devintf
+	/sbin/modprobe ipmi_devintf
 
-                maj=`cat /proc/devices | awk '/ipmidev/{print $1}'`
-                echo $maj
-                if [ -c /dev/ipmi0 ]
-                then rm -f /dev/ipmi0
-                fi
+        if [ -c /dev/ipmi0 ]
+	then rm -f /dev/ipmi0
+	fi
 
-                /bin/mknod /dev/ipmi0 c $maj 0
+	/bin/mknod /dev/ipmi0 c `cat /proc/devices | awk '/ipmidev/{print $1}'` 0
 
-                IPMI_DRIVERS="ipmi_si ipmi_si_drv ipmi_kcs_drv"
-                for driver in $IPMI_DRIVERS; do
-                  find /lib/modules/`uname -r`/kernel/drivers/char/ipmi | grep $driver > /dev/null
-                  if [ $? -eq 0 ] ; then
-                    #Here are specific memory locations for Supermicro AOC-type IPMI cards
-                    /sbin/modprobe $driver type=kcs ports=0xca8 regspacings=4
-                    break
-                  fi
-                done
+	IPMI_DRIVERS="ipmi_si ipmi_si_drv ipmi_kcs_drv"
+	for driver in $IPMI_DRIVERS; 
+	do
+	  found=$( find /lib/modules/`uname -r`/kernel/drivers/char/ipmi | grep $driver | grep -v "^$" | wc -l 2>/dev/null )
+	  if [ "$found" -ne 0 ] 
+	  then
+	    #Here are specific memory locations for Supermicro AOC-type IPMI cards
+	    /sbin/modprobe $driver type=kcs ports=0xca8 regspacings=4
+	    break
+	  fi
+	done
 
-                /etc/init.d/ipmi* start
-                if [ $? -ne 0 ]
-                then { 	# if the daemon cannot be started, alert zabbix
-                        $zs -vv -z $zserver -p $zport -s $thisserver -k $ipmistatus -o Stopped 1>/dev/null 2>/dev/null
-                        exit 0
-                     }
-                fi
-        fi
+	modules=`$LSMOD | grep -i ^ipmi | wc -l`
+	if [ "$modules" -eq 0 ]	
+	then
+		# if no modules are available, alert zabbix
+		$zs -vv -z $zserver -p $zport -s $thisserver -k $ipmistatus -o NoModulesAvailable 1>/dev/null 2>/dev/null
+		exit 0
+	fi
 fi
+#######################################################################################
 
 
-#### curl to zabbix api ####
-# Due to curl formatting, we have to delimit in such a way that the delimits will be read at execution time.
-# See http://www.zabbix.com/documentation/1.8/api or "zabbix_curl_api" in the csglinux git repo for more info
-# Example json request: 
-# { 
-#   "jsonrpc":"2.0",
-#   "method":"host.get",
-#   "params":{
-#  	        "output":"extend",
-#	        "filter": { 
-#			     "host":["ecmsapp1.missouri.edu"] 
-#			  }
-#	     }, 
-#   "auth":"91240fb8d61542580a3d2e7b00920b3c",
-#   "id":"2"
-# }
 
-#echo ============================================================== >> $ipmilog
 
-	
-## get host id ##
+############################	
+## Format host id request ##
+############################
 hostdata=\{\"jsonrpc\":\"2.0\",\"method\":\"host.get\",\"params\":\{\"output\":\"extend\",\"filter\":\{\"host\":\[\"$thisserver\"\]\}\},\"auth\":\"$zauth\",\"id\":\"2\"\}
 
-# curl get host id to zabbix
+# get host id from zabbix
 #echo curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi >> $ipmilog
 hostid=$( curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi | tr ',' '\n' | grep \"hostid | tr '\"' '\n' | grep [0-9] )
-####
+############################
 
 
-## get sensors app id ##
-getappid=\{\"jsonrpc\":\"2.0\",\"method\":\"application.get\",\"params\":\{\"search\":\{\"name\":\"Sensors\"\},\"hostids\":\"$hostid\",\"output\":\"extend\",\"expandData\":1,\"limit\":1\},\"auth\":\"$zauth\",\"id\":2\}
-
-# curl get sensors app id to zabbix
-#echo curl -i -X POST -H 'Content-Type:application/json' -d $getappid $zapi #>> $ipmilog
-appid_exists=$( curl -i -X POST -H 'Content-Type:application/json' -d $getappid $zapi | grep $thisserver | tr ',' '\n' | grep \"applicationid | tr '\"' '\n' | grep [0-9] )
-####
 
 
-#if application does not exist, we need to create it along with all items
+###################################
+## Format sensors app id request ##
+###################################
+appid=\{\"jsonrpc\":\"2.0\",\"method\":\"application.get\",\"params\":\{\"search\":\{\"name\":\"Sensors\"\},\"hostids\":\"$hostid\",\"output\":\"extend\",\"expandData\":1,\"limit\":1\},\"auth\":\"$zauth\",\"id\":2\}
+
+# get sensors app id from zabbix
+#echo curl -i -X POST -H 'Content-Type:application/json' -d $appid $zapi #>> $ipmilog
+appid_exists=$( curl -i -X POST -H 'Content-Type:application/json' -d $appid $zapi | grep $thisserver | tr ',' '\n' | grep \"applicationid | tr '\"' '\n' | grep [0-9] )
+###################################
+
+
+
+
+###################################################################
+## If application does not exist, create it along with all items ##
+###################################################################
 if [ -z $appid_exists ]
 then
 	# create Sensors application for host's classification
@@ -115,20 +118,33 @@ then
 #        echo curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi >> $ipmilog
         curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 fi	
+###################################################################
 
 
 
 
-# inform zabbix that the ipmi daemon is active
+###########################################
+## Inform zabbix that ipmitool is active ##
+###########################################
 $zs -vv -z $zserver -p $zport -s $thisserver -k $ipmistatus -o Active 1>/dev/null 2>/dev/null
-	
-# send the last line of the security event log log to zabbix
+###########################################
+
+
+
+
+############################################################
+## Send the last line of the security event log to zabbix ##
+############################################################
 $zs -vv -z $zserver -p $zport -s $thisserver -k $key_last_sel -o "$( /usr/bin/ipmitool sel list | tail -1 | sed 's/^[ \t]*//' | sed 's/[ \t]*$//g' | sed s/\|//g | sed s/\ /_/g | sed s/\\//_/g | sed s/\:/_/g | sed s/\#//g )" 1>/dev/null 2>/dev/null
+############################################################
 
 
 
 
-# ipmitool only returns a few entities, and of those, we only care about these: 3=CPU, 7=System Board, 8=Memory, 10=Power, 26=Disk Drive Bay 
+#############################################################################
+## Ipmitool only returns a few entities, and of those, we only care about: ##
+## 3=CPU, 7=System Board, 8=Memory, 10=Power, 26=Disk Drive Bay            ##
+#############################################################################
 for i in 3 7 8 10 26 
 do 
         IPMInum=( $( /usr/bin/ipmitool sdr entity $( echo $i ) | egrep -iv "\ $|Disabled|State\ Deasserted|No\ Reading|Error|Unknown" | tr [:upper:] [:lower:] | sed s/-//g | tr '\n' ';' ) ) 
@@ -197,4 +213,4 @@ do
 		$zs -vv -z $zserver -p $zport -s $thisserver -k $keyname -o "$keyval" 1>/dev/null 2>/dev/null
         done 
 done 
-
+#############################################################################
