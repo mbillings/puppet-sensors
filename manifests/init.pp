@@ -15,7 +15,7 @@ if ( $manufacturer == "Supermicro" )
 		path    => "/etc/zabbix/lm_sensors.sh",    
 		owner   => "root",
 		group   => "root",
-		mode    => "0750", 
+		mode    => "0700", 
 		content => template("sensors/lm_sensors.sh"),
 		require => Package[$rpms],
 	     } 
@@ -38,16 +38,19 @@ else #### Dell (catch-all) ####
 	package { $rpms: ensure => installed, }
 
 
+	# use default ipmi.sh script, or use debug options (sends output to /etc/zabbix/ipmilog)
+	if $fqdn == "um-psdev-00.umsystem.edu" { $ipmifile = "ipmi_debug.sh" }
+	else { $ipmifile = "ipmi.sh" }
+
 	# loads ipmi kernel modules, runs tool, and sends to zabbix
-	# This file is only ensured once. If you need to reinitialize, just delete this file on the host
-	file { "/etc/zabbix/ipmi.sh":
+	file { "/etc/zabbix/$ipmifile":
 		#replace => "no",
 		ensure	=> "present",
-		path    => "/etc/zabbix/ipmi.sh",
+		path    => "/etc/zabbix/$ipmifile",
 		owner   => "root",
 		group   => "root",
-		mode    => "0750",
-		content	=> template("sensors/ipmi.sh"),
+		mode    => "0700",
+		content	=> template("sensors/$ipmifile"),
 		require	=> Package[$rpms],
 	     }	 
 
@@ -55,7 +58,7 @@ else #### Dell (catch-all) ####
 	# cron to poll ipmi sensors
 	cron { "ipmi_sensors_cron":
 		ensure  => present,
-		command => "if [ `ps aux | grep 'ipmi.sh' | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/ipmi.sh 1>/dev/null 2>/dev/null`; fi 1>/dev/null 2>/dev/null",
+		command => "if [ `ps aux | grep $ipmifile | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/$ipmifile 1>/dev/null 2>/dev/null`; fi 1>/dev/null 2>/dev/null",
 		user    => "root",
 		minute  => "*/2",
 	     }
@@ -65,7 +68,7 @@ else #### Dell (catch-all) ####
 	exec { "set_ipmi_time":
 		command => 'ipmitool sel time set "`date +%m\/%d\/%Y\ %H:%M:%S`"',
 		path    => "/sbin/:/usr/sbin/:/bin/:/usr/bin/",
-		onlyif  => 'test `/etc/init.d/ipmievd status 2>/dev/null | grep -i running | wc -l` -eq 1 && ipmitime=$( ipmitool sel time get | sed s/\\///g | sed s/\://g | sed s/\ //g ) && datetime=$( /bin/date +%m%d%Y%H%M%S ) && test `if [ "${ipmitime}" -ne "${datetime}" ]; then echo 1; fi` -eq 1'
+		onlyif  => 'test `/sbin/lsmod | grep -i ^ipmi | wc -l` -ne 0 && ipmitime=$( ipmitool sel time get | sed s/\\///g | sed s/\://g | sed s/\ //g ) && datetime=$( /bin/date +%m%d%Y%H%M%S ) && test `if [ "${ipmitime}" -ne "${datetime}" ]; then echo 1; fi` -eq 1'
 	     }
 
 
@@ -73,7 +76,7 @@ else #### Dell (catch-all) ####
 	exec { "set_pass_and_community_string":
 		command => "ipmitool lan set 1 password 1T1ger1mu.1 && ipmitool user set password 2 alphadog && ipmitool lan set 1 snmp CSGLINUX",
 		path    => "/sbin/:/usr/sbin/:/bin/:/usr/bin/",
-		onlyif  => 'test `/etc/init.d/ipmievd status 2>/dev/null | grep -i running | wc -l` -eq 1 && test `ipmitool lan print | grep CSGLINUX | wc -l` -eq 0'
+		onlyif  => 'test `/sbin/lsmod | grep -i ^ipmi | wc -l` -ne 0 && test `ipmitool lan print | grep CSGLINUX | wc -l` -eq 0'
 	     }
 	
 	# here be future sol configuration when we have 10.x.x.x hooks into physical boxen
