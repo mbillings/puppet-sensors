@@ -6,7 +6,9 @@
 class sensors
 {
 #### Supermicro ####
-if ( $manufacturer == "Supermicro" )
+if ( $manufacturer == "VMware, Inc." )
+{ #noop }
+else if ( $manufacturer == "Supermicro" )
 { 
 	$rpms = ["lm_sensors"] 
 	package { $rpms: ensure => installed, }
