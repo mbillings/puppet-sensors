@@ -39,18 +39,18 @@ else #### Dell (catch-all) ####
 
 
 	# use default ipmi.sh script, or use debug options (sends output to /etc/zabbix/ipmilog)
-	if $fqdn == "um-psdev-00.umsystem.edu" { $ipmifile = "ipmi_debug.sh" }
-	else { $ipmifile = "ipmi.sh" }
+	if $fqdn == "your.fqdn.here" { $ipmifile = "ipmi_debug" }
+	else { $ipmifile = "ipmi" }
 
 	# loads ipmi kernel modules, runs tool, and sends to zabbix
-	file { "/etc/zabbix/$ipmifile":
+	file { "/etc/zabbix/$ipmifile.sh":
 		#replace => "no",
 		ensure	=> "present",
-		path    => "/etc/zabbix/$ipmifile",
+		path    => "/etc/zabbix/$ipmifile.sh",
 		owner   => "root",
 		group   => "root",
 		mode    => "0700",
-		content	=> template("sensors/$ipmifile"),
+		content	=> template("sensors/$ipmifile.erb"),
 		require	=> Package[$rpms],
 	     }	 
 
@@ -58,7 +58,7 @@ else #### Dell (catch-all) ####
 	# cron to poll ipmi sensors
 	cron { "ipmi_sensors_cron":
 		ensure  => present,
-		command => "if [ `ps aux | grep $ipmifile | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/$ipmifile 1>/dev/null 2>/dev/null`; fi 1>/dev/null 2>/dev/null",
+		command => "if [ `ps aux | grep $ipmifile.sh | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/$ipmifile.sh 1>/dev/null 2>/dev/null`; fi 1>/dev/null 2>/dev/null",
 		user    => "root",
 		minute  => "*/2",
 	     }
