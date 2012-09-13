@@ -2,16 +2,26 @@
 #
 # Purpose: Initialize ipmi and create Zabbix items for the host
 #
-# Comments: As of 26 June 2012, IPMI identifiers are not only non-unique, but also not consistent across platforms.
-# 	    Therefore, a template or templates to rule them all is not feasible.
+# Comments: As of 26 June 2012, IPMI identifiers are non-unique and non-consistent across platforms.
+# 	    Therefore, an ipmi template(s) to rule them all is not feasible.
 # 	    In addition, the Zabbix IPMI interface requires a template to work. 
 # 	    Thus, until a grand unified template is created or a newer IPMItools returns unique and consistent IDs,
-# 	    we are forced to create Zabbix items based on what IPMI returns.
+# 	    we are forced to slightly edit what IPMI returns to create unique Zabbix items.
 #
 # 	    Due to curl formatting, quotation marks must be delimited so that the delimits will be read at
 #	    execution time and interpreted as quotes. 
-#	    See http://www.zabbix.com/documentation/1.8/api or the "zabbix_curl_api" in the csglinux 
-#	    git repo for Zabbix curl formatting.
+#	    For examples and formatting, see http://www.zabbix.com/documentation/1.8/api 
+#	    or ssh://vcs.missouri.edu/var/git/csglinux.git/docs/zabbix_curl_api
+
+# one arg (--init) is supported, see if it was used
+case $1 in
+--init)
+	initialize=yes
+;;
+*)	initialize=no
+;;
+esac
+
 
 #############################
 ## User-editable variables ##
@@ -69,67 +79,49 @@ fi
 
 
 
-############################	
-## Format host id request ##
-############################
+#############################################################
+## Format host id, app id, and security event log requests ##
+#############################################################
 hostdata=\{\"jsonrpc\":\"2.0\",\"method\":\"host.get\",\"params\":\{\"output\":\"extend\",\"filter\":\{\"host\":\[\"$thisserver\"\]\}\},\"auth\":\"$zauth\",\"id\":\"2\"\}
 
 # get host id from zabbix
 hostid=$( curl -i -X POST -H 'Content-Type:application/json' -d $hostdata $zapi | tr ',' '\n' | grep \"hostid | tr '\"' '\n' | grep [0-9] )
-############################
 
-
-
-
-###################################
-## Format sensors app id request ##
-###################################
 appid=\{\"jsonrpc\":\"2.0\",\"method\":\"application.get\",\"params\":\{\"search\":\{\"name\":\"Sensors\"\},\"hostids\":\"$hostid\",\"output\":\"extend\",\"expandData\":1,\"limit\":1\},\"auth\":\"$zauth\",\"id\":2\}
 
 # get sensors app id from zabbix
 appid_exists=$( curl -i -X POST -H 'Content-Type:application/json' -d $appid $zapi | grep $thisserver | tr ',' '\n' | grep \"applicationid | tr '\"' '\n' | grep [0-9] )
-###################################
 
-
-
-
-###################################################################
-## If application does not exist, create it along with all items ##
-###################################################################
+# if the application does not exist, create it and set the create items variable
 if [ -z $appid_exists ]
 then
 	# create Sensors application for host's classification
 	appdata=\{\"jsonrpc\":\"2.0\",\"method\":\"application.create\",\"params\":\[\{\"name\":\"Sensors\",\"hostid\":\"$hostid\"\}\],\"auth\":\"$zauth\",\"id\":2\}
 	appid=$( curl -i -X POST -H 'Content-Type:application/json' -d $appdata $zapi | tr ',' '\n' | grep \"applicationid | tr '\"' '\n' | grep [0-9] )
-	
-	# create csg.sensors_ipmi_daemon_status item 
-	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$ipmistatus\",\"key_\":\"$ipmistatus\",\"type\":\"2\",\"value_type\":\"4\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
-	curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 
-	
-	# create ipmi security event log key
-	itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$key_last_sel\",\"key_\":\"$key_last_sel\",\"type\":\"2\",\"value_type\":\"4\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
-    curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
+	# set the flag to initialize items
+	initialize=yes
+fi
+
+# ipmi security event log key
+if [ "$initialize" == "yes" ]
+then
+	# see if the ipmi sel key exists or not
+	existsdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.exists\",\"params\":\{\"host\":\"$thisserver\",\"key_\":\"$keyname\"\},\"auth\":\"91240fb8d61542580a3d2e7b00920b3c\",\"id\":\"2\"\} 
+        exists=$( curl -i -X POST -H 'Content-Type:application/json' -d $existsdata $zapi | tr ',' '\n' | grep result | cut -d: -f2 )
+
+	# if it does not exist, then create it
+	if [ "$exists" == "false" ]
+	then
+		# create ipmi security event log key
+		itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$key_last_sel\",\"key_\":\"$key_last_sel\",\"type\":\"2\",\"value_type\":\"4\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+    		curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
+	fi
 fi	
-###################################################################
 
-
-
-
-###########################################
-## Inform zabbix that ipmitool is active ##
-###########################################
-$zs -vv -z $zserver -p $zport -s $thisserver -k $ipmistatus -o Active 1>/dev/null 2>/dev/null
-###########################################
-
-
-
-
-############################################################
-## Send the last line of the security event log to zabbix ##
-############################################################
+# send the last line of the sel to zabbix
 $zs -vv -z $zserver -p $zport -s $thisserver -k $key_last_sel -o "$( /usr/bin/ipmitool sel list | tail -1 | sed 's/^[ \t]*//' | sed 's/[ \t]*$//g' | sed s/\|//g | sed s/\ /_/g | sed s/\\//_/g | sed s/\:/_/g | sed s/\#//g )" 1>/dev/null 2>/dev/null
-############################################################
+###################################################################
 
 
 
@@ -147,7 +139,7 @@ do
         # set counter to create unique id names (IPMI does not always have unique ids, so we must make them unique)
         counter=0 
  
-	# get values for keys
+	# get the values of items
         for (( j=1; j<=$IPMIcount; j++ )) 
         do	# move sequentially top to bottom 
 	        IPMIval=`echo "${IPMInum[@]}" | tr ';' '\n' | head -"$j" | tail -1` 
@@ -156,6 +148,8 @@ do
                 then 
                         # get the number of the device 
                         qualifier=`echo $IPMIval | awk -F \| '{print $4}' | awk -F \. '{print $2}' | sed 's/[ \t]*$//g'` 
+			
+			# formatting, semantics
                         if [ `echo $IPMIval | awk -F \| '{print $4}' | egrep -i "3\.[0-9]" | wc -l` -ge 1 ] 
                         then    qualifier=cpu"$qualifier"_ 
                         else    if [ `echo $IPMIval | awk -F \| '{print $4}' | grep -i "8\.[0-9]" | wc -l` -ge 1 ] 
@@ -188,13 +182,22 @@ do
 		fi
 
 		#### create items ####
-		if [ -z $appid_exists ]
+		if [ "$initialize" == "yes" ]
 		then
-			if [ $valuetype -eq 0 ]
-			then 
-				itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"2\",\"value_type\":\"$valuetype\",\"units\":\"$units\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
-			else 
-				itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"2\",\"value_type\":\"$valuetype\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+        		# check if item exists
+			existsdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.exists\",\"params\":\{\"host\":\"$thisserver\",\"key_\":\"$keyname\"\},\"auth\":\"91240fb8d61542580a3d2e7b00920b3c\",\"id\":\"2\"\} 
+			exists=$( curl -i -X POST -H 'Content-Type:application/json' -d $existsdata $zapi | tr ',' '\n' | grep result | cut -d: -f2 )
+		
+			# if item does not exist, create it
+			if [ "$exists" == "false" ]
+			then
+				# if the item is a number, specify units. Otherwise it is text, so no units necessary
+				if [ $valuetype -eq 0 ]
+				then 
+					itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"2\",\"value_type\":\"$valuetype\",\"units\":\"$units\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+				else 
+					itemdata=\{\"jsonrpc\":\"2.0\",\"method\":\"item.create\",\"params\":\{\"description\":\"$keyname\",\"key_\":\"$keyname\",\"type\":\"2\",\"value_type\":\"$valuetype\",\"history\":\"30\",\"trends\":\"365\",\"delay\":\"120\",\"hostid\":\"$hostid\",\"applications\":\[\"$appid\"\]\},\"auth\":\"$zauth\",\"id\":\"2\"\}
+				fi
 			fi
 			curl -i -X POST -H 'Content-Type:application/json' -d $itemdata $zapi
 		fi

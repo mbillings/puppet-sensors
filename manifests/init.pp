@@ -42,7 +42,7 @@ else #### Dell (catch-all) ####
 
 
 	# use default ipmi.sh script, or use debug options (sends output to /etc/zabbix/ipmilog)
-	if $fqdn == "your.fqdn.here" { $ipmifile = "ipmi_debug" }
+	if $fqdn == "your.fqdn.here" { $ipmifile = "your.impifile.here" }
 	else { $ipmifile = "ipmi" }
 
 	# loads ipmi kernel modules, runs tool, and sends to zabbix
