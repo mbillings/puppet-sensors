@@ -7,7 +7,7 @@ class sensors
 {
 #### Supermicro ####
 if ( $manufacturer == "VMware, Inc." )
-{ #noop 
+{ #NOOP 
 }
 elsif ( $manufacturer == "Supermicro" )
 { 
