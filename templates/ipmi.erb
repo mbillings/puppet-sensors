@@ -1,17 +1,30 @@
 #!/bin/bash
+#===============================================================================
 #
-# Purpose: Initialize ipmi and create Zabbix items for the host
+#          FILE: <%= scope.lookupvar('sensors::ipmi_script') %>
+# 
+#         USAGE: Part of the Puppet module "sensors"
+# 
+#   DESCRIPTION: Initialize ipmi (if necessary), polls hardware info and 
+#                sensors, and creates/sends items/values to reporting 
+#                application
+# 
+#       OPTIONS: ---
+#  REQUIREMENTS: --- 
+#          BUGS: ---
 #
-# Comments: As of 26 June 2012, IPMI identifiers are non-unique and non-consistent across platforms.
-# 	    Therefore, an ipmi template(s) to rule them all is not feasible.
-# 	    In addition, the Zabbix IPMI interface requires a template to work. 
-# 	    Thus, until a grand unified template is created or a newer IPMItools returns unique and consistent IDs,
-# 	    we are forced to slightly edit what IPMI returns to create unique Zabbix items.
+#         NOTES: Part of the Puppet module "sensors", although variables can be
+#                hard-coded if facter and foreman are not used
+# 	             Due to curl formatting, quotation marks must be delimited so 
+#                that the delimits will be read at execution time and 
+#                interpreted as quotes. 
+#	             For examples and formatting (may be outdated), see 
+#                http://www.zabbix.com/documentation/1.8/api 
 #
-# 	    Due to curl formatting, quotation marks must be delimited so that the delimits will be read at
-#	    execution time and interpreted as quotes. 
-#	    For examples and formatting, see http://www.zabbix.com/documentation/1.8/api 
-#	    or ssh://vcs.missouri.edu/var/git/csglinux.git/docs/zabbix_curl_api
+#  ORGANIZATION: ---
+#       CREATED: ---
+#      REVISION: ---
+#===============================================================================
 
 # one arg (--init) is supported, see if it was used
 case $1 in
@@ -23,27 +36,31 @@ case $1 in
 esac
 
 
-#############################
-## User-editable variables ##
-#############################
-key="csg.sensors_ipmi_"
-key_last_sel=$key"last_sel"
-ipmistatus=$key"daemon_status"
-LSMOD="/sbin/lsmod"
-
-zs=<%= scope.lookupvar('zabbix-agent::which_zsender') %>
-zserver=<%= scope.lookupvar('zabbix-agent::zabbix_server') %>
-zport=10051
+#-------------------------------------------------------------------------------
+# Look up variables once to save on overhead and increase readability
+#
+# These can be removed/commented out and filled in manually if facter and 
+# foreman are not part of your environment
+#-------------------------------------------------------------------------------
+key=<%= scope.lookupvar('sensors::key') %>
+key_last_sel=<%= scope.lookupvar('sensors::key_last_sel') %>
+key_ipmi_status=<%= scope.lookupvar('sensors::key_ipmi_status') %>
+log=<%= scope.lookupvar('sensors::log') %>
+reporting_class=<%= scope.lookupvar('sensors::facter_reporting_class') %>
+reporting_sender=<%= scope.lookupvar('sensors::facter_reporting_sender') %>
+reporting_server=<%= scope.lookupvar('sensors::facter_reporting_server') %>
 thisserver=<%= fqdn %>
-zapi="https://zabbix.missouri.edu/zabbix/api_jsonrpc.php"
-zauth="91240fb8d61542580a3d2e7b00920b3c"
-#############################
+zs=<%= scope.lookupvar('$reporting_class::$reporting_sender') %>
+zserver=<%= scope.lookupvar('$reporting_class::$reporting_server') %>
+zport=<%= scope.lookupvar('sensors::reporting_port') %>
+zapi=<%= scope.lookupvar('sensors::reporting_api_url') %>
+zauth=<%= scope.lookupvar('sensors::reporting_auth') %>
 
 
-#######################################################################################
-## Check if ipmi modules are loaded. If none detected, try to load necessary modules ##
-#######################################################################################
-modules=`$LSMOD | grep -i ^ipmi | wc -l`
+#-------------------------------------------------------------------------------
+# IPMI module check. If none detected, try to load 
+#-------------------------------------------------------------------------------
+modules=`/sbin/lsmod | grep -i ^ipmi | wc -l`
 if [ "$modules" -eq 0 ] 
 then
 	/sbin/modprobe ipmi_devintf
@@ -66,11 +83,11 @@ then
 	  fi
 	done
 
-	modules=`$LSMOD | grep -i ^ipmi | wc -l`
+	modules=`/sbin/lsmod | grep -i ^ipmi | wc -l`
 	if [ "$modules" -eq 0 ]	
 	then
 		# if no modules are available, alert zabbix
-		$zs -vv -z $zserver -p $zport -s $thisserver -k $ipmistatus -o NoModulesAvailable 1>/dev/null 2>/dev/null
+		$zs -vv -z $zserver -p $zport -s $thisserver -k $key_ipmi_status -o NoModulesAvailable 1>/dev/null 2>/dev/null
 		exit 0
 	fi
 fi

@@ -1,88 +1,73 @@
-# Sensors: Probe physical hardware for temperature, voltage, wattage, amperage, hw presence/capability, etc.
+# ===Class: sensors
 #
-# Originally two manifests (ipmi and lm_sensors), it seemed easier to group them together for one-click execution
-# Apply this to any host, physical or virtual, and it should JustWork(tm) or at least Z!send an error message
+# This module manages files and scripts related to the Baseboard Management 
+# Console and Intelligent Platform Management Interface hardware polling
+# application, or Linux Hardware Monitoring for other devices. 
+#
+# The application probes hardware for temperature, voltage, wattage, 
+# amperage, fan speed, hardware presence/capabilities, and some other things
+# that aren't really important.
+#
+# BMC/IPMI also allows OS-independent console access to hardware-layer controls,
+# providing invaluable management controls such as power on (provided the 
+# machine is receiving some form of power) and reset (handy for kernel panics).
+#
+# See files/ipminotes.txt for more commands.
+#
+# ===Parameters: 
+#
+# ===Actions:
+#
+# Sets up physical machines for hardware polling and reporting.
+# Configures console access for hardware-layer controls.
+#
+# ===Requires:
+#
+# facter, foreman, zabbix 
+# Note: Due to how this class was set up to use facter variables, all 
+#       parameterized variables have been only set once in scripts
+#       if you would prefer to not use facter variables.
+#
+# ===Sample Usage:
+#
+# Include class in host or Foreman hostgroup profile.
+#
+# ===Notes:
+#
+# This has only been tested on Dell and Supermicro hardware with 
+# Red Hat Enterprise Linux >= 5.x
+#
+# In our environment, we only have three types of hardware manufacturers:
+# Dell, VMware, and Supermicro. Out of those three, there were only two types
+# of packages to choose from: lm or ipmi (doesn't make sense to track VMware). 
+#
+# Thus, this module was originally a fire-n-forget blanket apply with
+# if/then/else statements for deployment convenience. 
 #
 class sensors
+(
+  $facter_reporting_class  = $sensors::params::facter_reporting_class,
+  $facter_reporting_sender = $sensors::params::facter_reporting_sender,
+  $facter_reporting_server = $sensors::params::facter_reporting_server,
+  $key                     = $sensors::params::key,
+  $key_last_sel            = $sensors::params::key_last_sel,
+  $key_ipmi_status         = $sensors::params::key_ipmi_status,
+  $lm_package              = $sensors::params::lm_package,
+  $lm_script               = $sensors::params::lm_script,
+  $ipmi_group              = $sensors::params::ipmi_group,
+  $ipmi_pass_lan           = $sensors::params::ipmi_pass_lan,
+  $ipmi_pass_user          = $sensors::params::ipmi_pass_user,
+  $ipmi_package5           = $sensors::params::package5,
+  $ipmi_package6           = $sensors::params::package6,
+  $ipmi_script             = $sensors::params::script,
+  $log                     = $sensors::params::log,
+  $path                    = $sensors::params::path,
+  $reporting_api_url       = $sensors::params::reporting_api_url,
+  $reporting_auth          = $sensors::params::reporting_auth,
+  $reporting_port          = $sensors::params::reporting_port,
+) 
+
+inherits sensors::params
 {
-#### Supermicro ####
-if ( $manufacturer == "VMware, Inc." )
-{ #NOOP 
-}
-elsif ( $manufacturer == "Supermicro" )
-{ 
-	$rpms = ["lm_sensors"] 
-	package { $rpms: ensure => installed, }
-	
-	file { "lm_sensors.sh":
-		path    => "/etc/zabbix/lm_sensors.sh",    
-		owner   => "root",
-		group   => "root",
-		mode    => "0700", 
-		content => template("sensors/lm_sensors.sh"),
-		require => Package[$rpms],
-	     } 
-
-
-	# cron to poll lm sensors
-	cron { "lm_sensors_cron":
-		ensure  => present,
-		command => "if [ `ps aux | grep sensors | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/lm_sensors.sh 1>/dev/null 2>/dev/null`; fi 1>/dev/null 2>/dev/null",
-		user    => "root",
-		minute  => "*/2",
-	     }
-}
-else #### Dell (catch-all) ####
-{
-	# RHEL6=ipmitool, RHEL5=OpenIPMI-tools
-	if ($operatingsystemrelease >= 6)       { $rpms = ["ipmitool"] }
-	else                                    { $rpms = ["OpenIPMI-tools"] }
-
-	package { $rpms: ensure => installed, }
-
-
-	# use default ipmi.sh script, or use debug options (sends output to /etc/zabbix/ipmilog)
-	if $fqdn == "your.fqdn.here" { $ipmifile = "your.impifile.here" }
-	else { $ipmifile = "ipmi" }
-
-	# loads ipmi kernel modules, runs tool, and sends to zabbix
-	file { "/etc/zabbix/$ipmifile.sh":
-		#replace => "no",
-		ensure	=> "present",
-		path    => "/etc/zabbix/$ipmifile.sh",
-		owner   => "root",
-		group   => "root",
-		mode    => "0700",
-		content	=> template("sensors/$ipmifile.erb"),
-		require	=> Package[$rpms],
-	     }	 
-
-
-	# cron to poll ipmi sensors
-	cron { "ipmi_sensors_cron":
-		ensure  => present,
-		command => "if [ `ps aux | grep $ipmifile.sh | grep -v grep | wc -l` -eq 0 ]; then `nice -10 /etc/zabbix/$ipmifile.sh 1>/dev/null 2>/dev/null`; fi 1>/dev/null 2>/dev/null",
-		user    => "root",
-		minute  => "*/2",
-	     }
-
-
-	# hacked-together time set
-	exec { "set_ipmi_time":
-		command => 'ipmitool sel time set "`date +%m\/%d\/%Y\ %H:%M:%S`"',
-		path    => "/sbin/:/usr/sbin/:/bin/:/usr/bin/",
-		onlyif  => 'test `/sbin/lsmod | grep -i ^ipmi | wc -l` -ne 0 && ipmitime=$( ipmitool sel time get | sed s/\\///g | sed s/\://g | sed s/\ //g ) && datetime=$( /bin/date +%m%d%Y%H%M%S ) && test `if [ "${ipmitime}" -ne "${datetime}" ]; then echo 1; fi` -eq 1'
-	     }
-
-
-	# set root user pass, null user pass, and community string
-	exec { "set_pass_and_community_string":
-		command => "ipmitool lan set 1 password 1T1ger1mu.1 && ipmitool user set password 2 alphadog && ipmitool lan set 1 snmp CSGLINUX",
-		path    => "/sbin/:/usr/sbin/:/bin/:/usr/bin/",
-		onlyif  => 'test `/sbin/lsmod | grep -i ^ipmi | wc -l` -ne 0 && test `ipmitool lan print | grep CSGLINUX | wc -l` -eq 0'
-	     }
-	
-	# here be future sol configuration when we have 10.x.x.x hooks into physical boxen
-		
-}
+    include sensors::config 
 }
