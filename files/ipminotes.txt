@@ -1,0 +1,385 @@
+# these were immensely helpful in understanding IPMI
+http://lonesysadmin.net/2007/06/21/how-to-configure-ipmi-on-a-dell-poweredge-running-red-hat-enterprise-linux/
+http://www.alleft.com/sysadmin/ipmi-sol-inexpensive-remote-console/
+http://osdir.com/ml/hardware.ipmitool.devel/2008-02/msg00012.html
+
+# install and set up as a service
+yum install ipmitool (Cent: OpenIPMI)
+chkconfig ipmi[evd] on (systemctl enable ipmievd)
+/etc/init.d/ipmid start (systemctl start ipmievd.service)
+
+# on Cent, the kernel driver is not auto-loaded when Openipmi is installed
+/sbin/modprobe ipmi_devintf (may also be one of: ipmi_si ipmi_si_drv ipmi_kcs_drv)
+lspci -k | grep -i ipmi
+lsmod | grep -i ipmi
+
+# configure ethernet
+/usr/bin/ipmitool -I open lan set 1 ipaddr 192.168.2.2
+/usr/bin/ipmitool -I open lan set 1 defgw ipaddr 192.168.2.1
+/usr/bin/ipmitool -I open lan set 1 netmask 255.255.255.0
+/usr/bin/ipmitool -I open lan set 1 access on
+
+# configure your snmp community
+/usr/bin/ipmitool -I open lan set 1 snmp LINUX
+
+# set the null user password
+/usr/bin/ipmitool -I open lan set 1 password CRAPRANDOMSTRING
+
+# set the root password
+/usr/bin/ipmitool -I open user set password 2 REMEMBERTHIS
+
+# check your settings
+/usr/bin/ipmitool -I open lan print 1
+
+# get power status
+/usr/bin/ipmitool -I lan -U root -H 192.168.2.2 -a chassis power status
+
+# system event log list
+/usr/bin/ipmitool sel list
+
+
+
+
+# shell access, help for list of commands
+ipmitool -H {YOUR BMC IP} -U {YOUR USER} shell
+
+
+
+
+# activate Serial Over LAN (Ctrl+L to refresh)
+ipmitool -H {YOUR BMC IP} -U {YOUR USER} -I lanplus sol activate
+
+# append to kernel line for output redirection
+console=ttyS1,57600n8
+
+# get all sdr values for type temperature
+ipmitool sdr type Temperature | sed s/\-//g
+
+# see eth* devices
+ipmitool delloem mac list
+
+# power consumption
+ipmitool delloem powermonitor powerconsumptionhistory
+
+# display all available entities, important ones are 3,7,8,10,11?,16,26,34?
+ipmitool sdr entity 
+
+# view temperature info (need to figure out how to expand this to all entities)
+ipmitool sdr get Temp
+
+Entity IDs:
+
+     0  Unspecified                            1  Other                           
+     2  Unknown                                3  Processor                       
+     4  Disk or Disk Bay                       5  Peripheral Bay                  
+     6  System Management Module               7  System Board                    
+     8  Memory Module                          9  Processor Module                
+    10  Power Supply                          11  Add-in Card                     
+    12  Front Panel Board                     13  Back Panel Board                
+    14  Power System Board                    15  Drive Backplane                 
+    16  System Internal Expansion Board       17  Other System Board              
+    18  Processor Board                       19  Power Unit                      
+    20  Power Module                          21  Power Management                
+    22  Chassis Back Panel Board              23  System Chassis                  
+    24  Sub-Chassis                           25  Other Chassis Board             
+    26  Disk Drive Bay                        27  Peripheral Bay                  
+    28  Device Bay                            29  Fan Device                      
+    30  Cooling Unit                          31  Cable/Interconnect              
+    32  Memory Device                         33  System Management Software      
+    34  BIOS                                  35  Operating System                
+    36  System Bus                            37  Group                           
+    38  Remote Management Device              39  External Environment            
+    40  Battery                               41  Processing Blade                
+    42  Connectivity Switch                   43  Processor/Memory Module         
+    44  I/O Module                            45  Processor/IO Module             
+    46  Management Controller Firmware        47  IPMI Channel                    
+    48  PCI Bus                               49  PCI Express Bus                 
+    50  SCSI Bus (parallel)                   51  SATA/SAS Bus                    
+    52  Processor/Front-Side Bus             160  PICMG Front Board               
+   192  PICMG Rear Transition Module         193  PICMG AdvancedMC Module         
+   240  PICMG Shelf Management Controller     241  PICMG Filtration Unit           
+   242  PICMG Shelf FRU Information          243  PICMG Alarm Panel 
+
+# get specific information about those entities
+ipmitool sdr entity <number>
+
+# get serial-over-lan information per channel (usually only 1)
+ipmitool sol info 1
+Info: SOL parameter 'Payload Channel (7)' not supported - defaulting to 0x01
+Set in progress                 : set-complete
+Enabled                         : true
+Force Encryption                : true
+Force Authentication            : false
+Privilege Level                 : ADMINISTRATOR
+Character Accumulate Level (ms) : 50
+Character Send Threshold        : 255
+Retry Count                     : 7
+Retry Interval (ms)             : 480
+Volatile Bit Rate (kbps)        : 115.2
+Non-Volatile Bit Rate (kbps)    : 115.2
+Payload Channel                 : 1 (0x01)
+Payload Port                    : 623
+
+# sol escape sequences
+~.   Terminate connection
+~^Z  Suspend ipmitool
+~^X  Suspend ipmitool, but don’t restore tty on restart
+~B   Send break
+~~   Send the escape character by typing it twice
+~?   Print the supported escape sequences
+
+# get field-replacable unit information **D
+ipmitool fru print
+
+############################################################
+# below is the script to modprobe the ipmi driver
+############################################################
+#!/bin/bash
+
+#IPMI kernel module installer for Redhat-style machines
+#dranch-3r7Miqu9kMnR7s880joybQ@xxxxxxxxxxxxxxxx
+
+#07/26/06 - use absolute paths for modprobe
+#05/01/06 - orig version
+
+/sbin/modprobe ipmi_devintf
+
+maj=`cat /proc/devices | awk '/ipmidev/{print $1}'`
+echo $maj
+if [ -c /dev/ipmi0 ]
+then
+   rm -f /dev/ipmi0
+   /bin/mknod /dev/ipmi0 c $maj 0
+else
+   /bin/mknod /dev/ipmi0 c $maj 0
+fi
+
+IPMI_DRIVERS="ipmi_si ipmi_si_drv ipmi_kcs_drv"
+for driver in $IPMI_DRIVERS; do
+  find /lib/modules/`uname -r`/kernel/drivers/char/ipmi | grep $driver > /dev/null
+  RETURN_VALUE=$?
+  if [ $RETURN_VALUE -eq 0 ] ; then
+    #Here are specific memory locations for Supermicro AOC-type IPMI cards
+    /sbin/modprobe $driver type=kcs ports=0xca8 regspacings=4
+    break
+  fi
+done
+
+
+
+
+
+# sample output on an R710
+ipmitool> sdr
+Temp             | -67 degrees C     | ok
+Temp             | -67 degrees C     | ok
+Temp             | 34 degrees C      | ok
+Temp             | 34 degrees C      | ok
+Ambient Temp     | 21 degrees C      | ok
+Planar Temp      | 36 degrees C      | ok
+CMOS Battery     | 0x00              | ok
+VCORE PG         | 0x01              | ok
+VCORE PG         | 0x01              | ok
+0.75 VTT CPU2 PG | 0x01              | ok
+0.75 VTT CPU1 PG | 0x01              | ok
+IOH THERMTRIP    | Not Readable      | ns
+1.5V PG          | 0x01              | ok
+1.8V PG          | 0x01              | ok
+3.3V PG          | 0x01              | ok
+5V PG            | 0x01              | ok
+MEM PG           | 0x01              | ok
+MEM PG           | 0x01              | ok
+VTT PG           | 0x01              | ok
+VTT PG           | 0x01              | ok
+0.9V PG          | 0x01              | ok
+1.8 PLL  PG      | 0x01              | ok
+1.8 PLL PG       | 0x01              | ok
+8.0 V PG         | 0x01              | ok
+1.1 V PG         | 0x01              | ok
+1.0 LOM PG       | 0x01              | ok
+1.0 AUX PG       | 0x01              | ok
+PFault Fail Safe | Not Readable      | ns
+1.05 V PG        | 0x01              | ok
+Heatsink Pres    | 0x01              | ok
+iDRAC6 Ent Pres  | 0x01              | ok
+USB Cable Pres   | 0x01              | ok
+Stor Adapt Pres  | 0x01              | ok
+Riser2 Pres      | 0x01              | ok
+Riser1 Pres      | 0x01              | ok
+FAN 1 RPM        | 3600 RPM          | ok
+FAN 2 RPM        | 3600 RPM          | ok
+FAN 3 RPM        | 3600 RPM          | ok
+FAN 4 RPM        | 3600 RPM          | ok
+FAN 5 RPM        | 3600 RPM          | ok
+Presence         | 0x01              | ok
+Presence         | 0x01              | ok
+Presence         | 0x01              | ok
+Presence         | 0x01              | ok
+Presence         | 0x01              | ok
+Status           | 0x80              | ok
+Status           | 0x80              | ok
+Status           | 0x01              | ok
+Current          | 0.28 Amps         | ok
+Current          | 0.48 Amps         | ok
+Voltage          | 222 Volts         | ok
+Voltage          | 214 Volts         | ok
+Status           | 0x01              | ok
+Riser Config     | 0x01              | ok
+OS Watchdog      | 0x00              | ok
+SEL              | Not Readable      | ns
+Intrusion        | 0x00              | ok
+PS Redundancy    | 0x01              | ok
+Fan Redundancy   | 0x01              | ok
+CPU Temp Interf  | Not Readable      | ns
+System Level     | 175 Watts         | ok
+Power Optimized  | 0x01              | ok
+Drive            | 0x01              | ok
+Cable SAS A      | 0x01              | ok
+Cable SAS B      | 0x01              | ok
+DKM Status       | 0x00              | ok
+ECC Corr Err     | Not Readable      | ns
+ECC Uncorr Err   | Not Readable      | ns
+I/O Channel Chk  | Not Readable      | ns
+PCI Parity Err   | Not Readable      | ns
+PCI System Err   | Not Readable      | ns
+SBE Log Disabled | Not Readable      | ns
+Logging Disabled | Not Readable      | ns
+Unknown          | Not Readable      | ns
+CPU Protocol Err | Not Readable      | ns
+CPU Bus PERR     | Not Readable      | ns
+CPU Init Err     | Not Readable      | ns
+CPU Machine Chk  | Not Readable      | ns
+Memory Spared    | 0x00              | ok
+Memory Mirrored  | 0x01              | ok
+Memory RAID      | 0x01              | ok
+Memory Added     | 0x01              | ok
+Memory Removed   | 0x01              | ok
+Memory Cfg Err   | Not Readable      | ns
+Mem Redun Gain   | 0x01              | ok
+PCIE Fatal Err   | 0x01              | ok
+Chipset Err      | 0x01              | ok
+Err Reg Pointer  | 0x01              | ok
+Mem ECC Warning  | 0x01              | ok
+Mem CRC Err      | Not Readable      | ns
+USB Over-current | Not Readable      | ns
+POST Err         | 0x01              | ok
+Hdwr version err | 0x01              | ok
+Mem Overtemp     | 0x01              | ok
+Mem Fatal SB CRC | 0x01              | ok
+Mem Fatal NB CRC | 0x01              | ok
+OS Watchdog Time | Not Readable      | ns
+Non Fatal PCI Er | Not Readable      | ns
+Fatal IO Error   | Not Readable      | ns
+MSR Info Log     | 0x01              | ok
+Temp             | 26 degrees C      | ok
+Temp             | 28 degrees C      | ok
+Temp             | 51 degrees C      | cr
+ROMB Battery     | 0x00              | ok
+vFlash           | 0x00              | ok
+
+#sample output an R710 via "ipmitool sdr elist"
+Temp             | 01h | ok  |  3.1 | -68 degrees C
+Temp             | 02h | ok  |  3.2 | -67 degrees C
+Temp             | 05h | ok  | 10.1 | 34 degrees C
+Temp             | 06h | ok  | 10.2 | 33 degrees C
+Ambient Temp     | 0Eh | ok  |  7.1 | 21 degrees C
+Planar Temp      | 0Fh | ok  |  7.1 | 36 degrees C
+CMOS Battery     | 10h | ok  |  7.1 | 
+VCORE PG         | 12h | ok  |  3.1 | State Deasserted
+VCORE PG         | 13h | ok  |  3.2 | State Deasserted
+0.75 VTT CPU2 PG | 14h | ok  |  3.2 | State Deasserted
+0.75 VTT CPU1 PG | 15h | ok  |  3.1 | State Deasserted
+IOH THERMTRIP    | 5Dh | ns  |  7.1 | Disabled
+1.5V PG          | 17h | ok  |  7.1 | State Deasserted
+1.8V PG          | 18h | ok  |  7.1 | State Deasserted
+3.3V PG          | 19h | ok  |  7.1 | State Deasserted
+5V PG            | 1Ah | ok  |  7.1 | State Deasserted
+MEM PG           | 1Bh | ok  |  3.2 | State Deasserted
+MEM PG           | 1Eh | ok  |  3.1 | State Deasserted
+VTT PG           | 1Fh | ok  |  3.2 | State Deasserted
+VTT PG           | 20h | ok  |  3.1 | State Deasserted
+0.9V PG          | 21h | ok  |  7.1 | State Deasserted
+1.8 PLL  PG      | 22h | ok  |  3.2 | State Deasserted
+1.8 PLL PG       | 24h | ok  |  3.1 | State Deasserted
+8.0 V PG         | 25h | ok  |  7.1 | State Deasserted
+1.1 V PG         | 28h | ok  |  7.1 | State Deasserted
+1.0 LOM PG       | 29h | ok  |  7.1 | State Deasserted
+1.0 AUX PG       | 2Ah | ok  |  7.1 | State Deasserted
+PFault Fail Safe | 5Fh | ns  |  7.1 | No Reading
+1.05 V PG        | 2Bh | ok  |  7.1 | State Deasserted
+Heatsink Pres    | 52h | ok  |  7.1 | Present
+iDRAC6 Ent Pres  | 70h | ok  |  7.1 | Present
+USB Cable Pres   | 59h | ok  |  7.1 | Present
+Stor Adapt Pres  | 5Ah | ok  |  7.1 | Present
+Riser2 Pres      | 5Bh | ok  |  7.1 | Present
+Riser1 Pres      | 5Ch | ok  |  7.1 | Present
+FAN 1 RPM        | 30h | ok  |  7.1 | 3600 RPM
+FAN 2 RPM        | 31h | ok  |  7.1 | 3600 RPM
+FAN 3 RPM        | 32h | ok  |  7.1 | 3600 RPM
+FAN 4 RPM        | 33h | ok  |  7.1 | 3600 RPM
+FAN 5 RPM        | 34h | ok  |  7.1 | 3600 RPM
+Presence         | 50h | ok  |  3.1 | Present
+Presence         | 51h | ok  |  3.2 | Present
+Presence         | 54h | ok  | 10.1 | Present
+Presence         | 55h | ok  | 10.2 | Present
+Presence         | 56h | ok  | 26.1 | Present
+Status           | 60h | ok  |  3.1 | Presence detected
+Status           | 61h | ok  |  3.2 | Presence detected
+Status           | 64h | ok  | 10.1 | Presence detected
+Current          | 94h | ok  | 10.1 | 0.40 Amps
+Current          | 95h | ok  | 10.2 | 0.48 Amps
+Voltage          | 96h | ok  | 10.1 | 222 Volts
+Voltage          | 97h | ok  | 10.2 | 214 Volts
+Status           | 65h | ok  | 10.2 | Presence detected
+Riser Config     | 66h | ok  |  7.1 | Connected
+OS Watchdog      | 71h | ok  |  7.1 | 
+SEL              | 72h | ns  |  7.1 | No Reading
+Intrusion        | 73h | ok  |  7.1 | 
+PS Redundancy    | 74h | ok  |  7.1 | Fully Redundant
+Fan Redundancy   | 75h | ok  |  7.1 | Fully Redundant
+CPU Temp Interf  | 76h | ns  |  7.1 | Disabled
+System Level     | 98h | ok  |  7.1 | 175 Watts
+Power Optimized  | 99h | ok  |  7.1 | OEM Specific
+Drive            | 80h | ok  | 26.1 | Drive Present
+Cable SAS A      | 90h | ok  | 26.1 | Connected
+Cable SAS B      | 91h | ok  | 26.1 | Connected
+DKM Status       | A0h | ok  |  7.1 | 
+ECC Corr Err     | 01h | ns  | 34.1 | Disabled
+ECC Uncorr Err   | 02h | ns  | 34.1 | Disabled
+I/O Channel Chk  | 03h | ns  | 34.1 | No Reading
+PCI Parity Err   | 04h | ns  | 34.1 | No Reading
+PCI System Err   | 05h | ns  | 34.1 | Disabled
+SBE Log Disabled | 06h | ns  | 34.1 | Disabled
+Logging Disabled | 07h | ns  | 34.1 | No Reading
+Unknown          | 08h | ns  | 34.1 | No Reading
+CPU Protocol Err | 0Ah | ns  | 34.1 | Disabled
+CPU Bus PERR     | 0Bh | ns  | 34.1 | Disabled
+CPU Init Err     | 0Ch | ns  | 34.1 | Disabled
+CPU Machine Chk  | 0Dh | ns  | 34.1 | No Reading
+Memory Spared    | 11h | ok  | 34.1 | 
+Memory Mirrored  | 12h | ok  | 34.1 | Fully Redundant
+Memory RAID      | 13h | ok  | 34.1 | Fully Redundant
+Memory Added     | 14h | ok  | 34.1 | Correctable ECC
+Memory Removed   | 15h | ok  | 34.1 | Correctable ECC
+Memory Cfg Err   | 16h | ns  | 34.1 | No Reading
+Mem Redun Gain   | 17h | ok  | 34.1 | Fully Redundant
+PCIE Fatal Err   | 18h | ok  | 34.1 | NMI/Diag Interrupt
+Chipset Err      | 19h | ok  | 34.1 | NMI/Diag Interrupt
+Err Reg Pointer  | 1Ah | ok  | 34.1 | 
+Mem ECC Warning  | 1Bh | ok  | 34.1 | Transition to OK
+Mem CRC Err      | 1Ch | ns  | 34.1 | No Reading
+USB Over-current | 1Dh | ns  | 34.1 | No Reading
+POST Err         | 1Eh | ok  | 34.1 | Unspecified, No system memory installed, No usable system memory, Unrecoverable IDE device failure, Unrecoverable system-board failure, Unrecoverable diskette failure, Unrecoverable hard-disk controller failure, Unrecoverable PS/2 or USB keyboard failure, Removable boot media not found, Unrecoverable video controller failure, No video device selected, BIOS corruption detected, CPU voltage mismatch, CPU speed mismatch failure, Unknown Error
+Hdwr version err | 1Fh | ok  | 34.1 | Hardware change detected
+Mem Overtemp     | 20h | ok  | 34.1 | Correctable ECC
+Mem Fatal SB CRC | 21h | ok  | 34.1 | Correctable ECC
+Mem Fatal NB CRC | 22h | ok  | 34.1 | Correctable ECC
+OS Watchdog Time | 23h | ns  | 34.1 | No Reading
+Non Fatal PCI Er | 26h | ns  | 34.1 | No Reading
+Fatal IO Error   | 27h | ns  | 34.1 | No Reading
+MSR Info Log     | 28h | ok  | 34.1 | 
+Temp             | 0Ah | ok  |  8.1 | 26 degrees C
+Temp             | 0Bh | ok  |  8.1 | 27 degrees C
+Temp             | 0Ch | ucr |  8.1 | 51 degrees C
+ROMB Battery     | 11h | ok  | 26.3 | 
+vFlash           | D3h | ok  | 11.2 |
