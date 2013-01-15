@@ -18,7 +18,7 @@ class sensors::params
   $ipmi_package5           = 'OpenIPMI-tools'
   $ipmi_package6           = 'ipmitool'
   $ipmi_script             = 'ipmi_script.sh'
-  $log                     = '/var/log/sensors_log'
+  $log                     = '/tmp/sensors_log'
   $path                    = '/usr/local/sbin'
   $reporting_api_url       = 'http://zabbix.host.domain/zabbix/api_jsonrpc.php'
   $reporting_auth          = '3ut8tzru47doslauc900475hg88qbat3'
