@@ -44,7 +44,7 @@ class sensors::config
            minute  => "*/2",
 	     }
   
-    if $apptype != /^lm_sensors/
+    if $apptype =~ /^ipmi/
     {
 	  # set ipmi time
 	  exec { "set_ipmi_time":
