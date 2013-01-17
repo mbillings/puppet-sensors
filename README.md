@@ -12,15 +12,15 @@ along with some other fields that aren't really important or don't always return
 
 Here is an example of ipmitool implemented on a Dell R900. Units were dynamically named by ipmitool.
 
-![IPMItool on a Dell R900](http://github.com/mbillings/puppet-sensors/blob/master/pics/ipmi_zabbix_r900.jpg "IPMItool on a Dell R900")
+![IPMItool on a Dell R900](https://github.com/mbillings/puppet-sensors/blob/master/pics/ipmi_zabbix_r900.jpg "IPMItool on a Dell R900")
 
 Over two weeks, it becomes easier to see averages and trending.
 
-![IPMItool over 2 weeks on a Dell R900](http://github.com/mbillings/puppet-sensors/blob/master/pics/ipmi_zabbix2weekgraphs_r900.jpg "Values for IPMItool over 2 weeks")
+![IPMItool over 2 weeks on a Dell R900](https://github.com/mbillings/puppet-sensors/blob/master/pics/ipmi_zabbix2weekgraphs_r900.jpg "Values for IPMItool over 2 weeks")
 
 Running lm_sensors on a Supermicro X7SLA device.
 
-![lm_sensors on a Supermicro device](http://github.com/mbillings/puppet-sensors/blob/master/pics/lm_zabbix_supermicro.jpg "lm_sensors on a Supermicro box")
+![lm_sensors on a Supermicro device](https://github.com/mbillings/puppet-sensors/blob/master/pics/lm_zabbix_supermicro.jpg "lm_sensors on a Supermicro box")
 
 BMC/IPMI also allows OS-independent console access to hardware-layer controls, providing invaluable management 
 commands such as <power reset> to remotely hard-reset a kernel-panicked machine, and 
