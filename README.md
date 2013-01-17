@@ -23,7 +23,7 @@ Running lm_sensors on a Supermicro X7SLA device.
 ![lm_sensors on a Supermicro device](https://raw.github.com/mbillings/puppet-sensors/master/pics/lm_zabbix_supermicro.jpg "lm_sensors on a Supermicro box")
 
 BMC/IPMI also allows OS-independent console access to hardware-layer controls, providing invaluable management 
-commands such as <power reset> to remotely hard-reset a kernel-panicked machine, and 
-<delloem powermonitor powerconsumptionhistory> (if you have a Dell machine).
+commands such as "power reset" to remotely hard-reset a kernel-panicked machine, and 
+"delloem powermonitor powerconsumptionhistory" (if you have a Dell machine).
 
 See files/ipminotes.txt for field explanation and more commands.
